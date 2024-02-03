@@ -81,12 +81,12 @@ impl Engine {
 
     /// Generate the url based on the data already existing in the [Engine] object and based on the term passed
     /// as argument;
-    pub fn url(self, term: &str) -> Result<String, io::Error> {
+    pub fn url(&self, term: &str) -> Result<String, io::Error> {
         info!("Generating a URL.");
 
         match Regex::new(self.regex.as_str()) {
             Ok(regex) => {
-                let treated_string = regex.replace_all(term, self.replacement).to_string();
+                let treated_string = regex.replace_all(term, &self.replacement).to_string();
                 info!("Treated string");
                 match Regex::new(&regex::escape(self.pattern.as_str())) {
                     Ok(pattern) => {
@@ -369,13 +369,13 @@ impl Configuration {
 /// [Parser], belonging to *Clap*, is used to generate the implementation for the command line.
 /// command macros are used to add information to the command line, according to their name.
 #[derive(Parser)]
-#[command(author = "Arthur Valadares Campideli", version, about = "A simple test application in rust", long_about = "This application was created with the aim of adding a shortcut to the keyboard in order to search the selected text")]
+#[command(author = "Arthur Valadares Campideli", version, about = "An application to open a search term from the command line", long_about = "This application was created with the aim of adding a shortcut to the keyboard in order to search the selected text")]
 #[command(propagate_version = true)]
 struct Cli {
 
     /// The search term to be used, possibly null, in this case the selected text will be used
-    #[arg(help = "Specify the term to be searched for")]
-    term: Option<String>,
+    #[arg(num_args(0..), help = "Specify the term to be searched for")]
+    term: Option<Vec<String>>,
 
     /// Optional argument. If none is specified, the default will be used
     #[arg(long, short, help = "Specifies the search engine to be used")]
@@ -588,22 +588,32 @@ fn main() {
                     };
 
 
-                    let query = if let Some(value) = cli.term {
-                        value
-                    } else {
-                        get_text()
-                    };
-
-                    match engine.url(query.as_str()) {
-                        Ok(url) => {
-                            if let Ok(..) = open::that(url.clone()) {
-                                info!("Browser opened successfully. Url: {}", url);
-                            } else {
-                                error!("Error opening browser.");
+                    if let Some(value) = cli.term {
+                        for query in value {
+                            match engine.url(query.as_str()) {
+                                Ok(url) => {
+                                    if let Ok(..) = open::that(url.clone()) {
+                                        info!("Browser opened successfully. Url: {}", url);
+                                    } else {
+                                        error!("Error opening browser.");
+                                    }
+                                }
+                                Err(_) => error!("Unable to generate URL"),
                             }
                         }
-                        Err(_) => error!("Unable to generate URL"),
-                    }
+                    } else {
+                        match engine.url(get_text().as_str()) {
+                            Ok(url) => {
+                                if let Ok(..) = open::that(url.clone()) {
+                                    info!("Browser opened successfully. Url: {}", url);
+                                } else {
+                                    error!("Error opening browser.");
+                                }
+                            }
+                            Err(_) => error!("Unable to generate URL"),
+                        }
+                    };
+
                 }
             }
             Err(_) => {
