@@ -34,6 +34,16 @@ fn log_init(file_path: PathBuf) {
     log4rs::init_config(config).unwrap();
 }
 
+
+/// This class was created with the aim of representing a search engine.
+/// It makes use of the macros [Serialize], [Deserialize] and [Parse] so that it can be serialized and deserialized
+/// by serde \[feature= serde_yaml] and passed as arguments on the command line. This object contains the
+/// minimum settings for the system to function properly, regarding the search engine URL.
+/// Attributes:
+/// - [name], to represent the name of the search engine;
+/// - [url_pattern], to store the search engine url pattern;
+/// - [pattern], to store the replacement pattern being used in the url;
+/// - [regex], the regex that will be searched within the search term and replaced by [replacement];
 #[derive(Serialize, Deserialize, Debug, Parser, Clone)]
 pub struct Engine {
     name: String,
@@ -43,6 +53,12 @@ pub struct Engine {
     replacement: String,
 }
 
+
+/// Implementation of the struct [Engine].
+/// Methods:
+/// - [new], used to create a new engine according to the values passed as arguments;
+/// - [url], used to generate the url based on the data already existing in the [Engine] object and based on the term,
+/// [term] passed as argument;
 impl Engine {
     pub fn new(name: &str, url_pattern: &str, pattern: &str, regex: &str, replacement: &str) -> Engine {
         info!("Creating a new engine.");
@@ -82,6 +98,15 @@ impl Engine {
     }
 }
 
+
+/// Class created with the objective of storing all the configurations that the program supports.
+/// The [Configuration] class has the macros [Serialize] and [Deserialize], so that it can be serialized and
+/// deserialized by serde \[feature=serde_yaml], in order to be written to and read from a .yaml file
+/// Attributes:
+/// - [file_path], stores the configuration file path;
+/// - [default_engine], stores the name of the default search engine, null by default and subject to change,
+/// according to user preferences;
+/// - [engines], stores all objects representing search engines - [Engine]
 #[derive(Serialize, Deserialize, Debug)]
 struct Configuration {
     #[serde(skip_serializing)]
@@ -92,6 +117,29 @@ struct Configuration {
     engines: Option<Vec<Engine>>,
 }
 
+
+/// Implementation of the Configuration struct.
+/// About the macro: In order to provide possibly useful features for what the project may become.
+/// Some functions, whose scope is very well defined, are currently not applicable. To this end, in order
+/// to indicate to the compiler that there are no problems with the existence of _dead_ code, this directive is used
+/// Methods:
+/// - [new], responsible for creating a new instance of a configuration object based on the values passed as
+/// arguments;
+/// - [from] responsible for loading the configuration object from the file path passed as an argument.
+/// If the file does not exist, it is created, if it exists but is empty, a new default configuration object is
+/// created, if the file exists and is not empty, an attempt is made to load its configuration.
+/// - [save], saves the object contents to a .yaml file;
+/// - [push], adds an engine to the list of configured search engines;
+/// - [update_path], updates the file path. UNUSED;
+/// - [remove_where_name], removes a search engine based on name;
+/// - [remove_at], removes a search engine based on its position;
+/// - [names], generates a list of the names of the configured search engines;
+/// - [patterns], generates a list of patterns configured for each search engine;
+/// - [url_patterns], generates a list of url patterns from all search engines;
+/// - [regexes], generates a list with the regex of each search engine;
+/// - [replacements], generates a list of [replacements] for each search engine;
+/// - [set_default], sets the default search engine based on name;
+/// - [where_name], returns the search engine based on the name passed as an argument;
 #[warn(dead_code)]
 impl Configuration {
     pub fn new(file_path: PathBuf, default_engine: Option<String>, engines: Option<Vec<Engine>>) -> Configuration {
@@ -283,6 +331,13 @@ impl Configuration {
 }
 
 
+/// Classe responsável por fazer o intermédio da linha de comando com o executável.
+/// Faz-se uso do [Parse], pertencente ao *Clap*, para gerar a implementação para a linha de comando.
+/// Os macros [command] são usados para adicionar informações à linha de comando, conforme o nome de cada um.
+/// Atributos:
+/// - [term], o termo de busca a ser utilizado, possivelmente nulo, neste caso, o texto selecionado sera usado;
+/// - [angine], argumento opcional. Se nenhuma for especificada usar-se-à a padrão;
+/// - [commands], comandos passíveis de execução;
 #[derive(Parser)]
 #[command(author = "Arthur Valadares Campideli", version, about = "A simple test application in rust", long_about = "This application was created with the aim of adding a shortcut to the keyboard in order to search the selected text")]
 #[command(propagate_version = true)]
@@ -297,6 +352,14 @@ struct Cli {
     commands: Option<Commands>,
 }
 
+
+/// Enum containing the subcommands that can be executed from the Cli.
+/// Values:
+/// - [Commands::List], lists the configured search engines;
+/// - [Commands::Default], shows the default search engine configured;
+/// - [Commands::SetDefault], defines the search engine, taking the name of the search engine as an argument;
+/// - [Commands::Add], adds a search engine based on the values requested by [Engine::new];
+/// - [Commands::Remove], removes a search engine based on name;
 #[derive(Subcommand)]
 enum Commands {
     #[clap(about = "List configured search engines")]
