@@ -3,8 +3,10 @@ use std::fs::File;
 use std::io::Write;
 use std::option::Option;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
+use home::home_dir;
 use log::{error, info, LevelFilter, warn};
 use log4rs;
 use log4rs::append::file::FileAppender;
@@ -14,7 +16,8 @@ use log4rs::encode::pattern::PatternEncoder;
 use regex::Regex;
 use selection::get_text;
 use serde::{Deserialize, Serialize};
-use home::home_dir;
+use uuid::Uuid;
+use inquire::Text;
 
 fn log_init(file_path: PathBuf) {
     let logfile = FileAppender::builder()
@@ -41,6 +44,9 @@ fn log_init(file_path: PathBuf) {
 /// minimum settings for the system to function properly, regarding the search engine URL.
 #[derive(Serialize, Deserialize, Debug, Parser, Clone)]
 pub struct Engine {
+
+    uuid: Uuid,
+
     /// Represent the name of the search engine
     name: String,
 
@@ -63,6 +69,7 @@ impl Engine {
     pub fn new(name: &str, url_pattern: &str, pattern: &str, regex: &str, replacement: &str) -> Engine {
         info!("Creating a new engine.");
         Engine {
+            uuid: Uuid::new_v4(),
             name: String::from(name),
             url_pattern: String::from(url_pattern),
             pattern: pattern.to_string(),
@@ -243,6 +250,17 @@ impl Configuration {
         };
     }
 
+    pub fn remove_where_uuid(&mut self, uuid: Uuid) -> Result<(), io::Error> {
+        return if let Some(content) = &mut self.engines {
+          content.retain(|element| element.uuid != uuid);
+            Ok(())
+        }
+        else{
+            info!("Attempting to remove an element from a null vector");
+            Err(io::Error::new(io::ErrorKind::InvalidData, "Attempting to remove an element from a null vector"))
+        };
+    }
+
 
     /// Removes a search engine based on its position on [self.engines]
     pub fn remove_at(self, index: usize) -> Result<(), io::Error> {
@@ -377,31 +395,51 @@ enum Commands {
     #[clap(about = "List configured search engines")]
     List,
 
-    /// Shows the default search engine configured
-    #[clap(about = "Show default engine")]
-    Default,
-
-    /// Defines the search engine, taking the name of the search engine as an argument
-    #[clap(about = "Sets the default search engine", )]
-    SetDefault {
-        name: String,
-    },
+    /// Defines and shows the default search engine configured
+    #[clap(about = "If no arguments are given, show the default search engine, if name is given, set the default search engine")]
+    Default {name: Option<String>,},
 
     /// Adds a search engine based on the values requested by [Engine::new]
     #[clap(about = "Add a search engine")]
     Add {
-        name: String,
-        url_pattern: String,
-        pattern: String,
-        regex: String,
-        replacement: String,
+        #[arg(help = "Search engine name")]
+        name: Option<String>,
 
+        #[arg(help = "Search engine url pattern")]
+        url_pattern: Option<String>,
+
+        #[arg(help = "Pattern that will be replaced by the treated search term")]
+        pattern: Option<String>,
+
+        #[arg(help = "Regex that will be applied to the search term")]
+        regex: Option<String>,
+
+        #[arg(help = "Value by which the regex will be replaced")]
+        replacement: Option<String>,
+
+
+        #[arg(short, long, help = "Force the addition of a new search engine with a repeated name")]
+        force: bool,
+
+        #[arg(short, long, help = "Adds a new search engine interactively")]
+        interactive: bool,
     },
 
     /// Removes a search engine based on name
-    #[clap(about = "Remove a search engine based on name")]
+    #[clap(about = "Remove a search engine based on name or uuid")]
     Remove {
-        name: String,
+        value: String,
+
+        #[arg(short, long)]
+        uuid: bool
+    },
+
+    #[clap(about = "Shows a specific search engine or all")]
+    Show {
+        name: Option<String>,
+
+        #[arg(short, long, required_unless_present = "name")]
+        all: bool,
     },
 }
 
@@ -416,14 +454,58 @@ fn main() {
             Ok(mut config) => {
                 if let Some(command) = cli.commands {
                     match command {
-                        Commands::Add { name, url_pattern, pattern, regex, replacement } => {
-                            config.push(Engine::new(name.as_str(), url_pattern.as_str(), pattern.as_str(), regex.as_str(), replacement.as_str()));
+                        Commands::Add { name, url_pattern, pattern, regex, replacement, force , interactive} => {
+                            if interactive {
+                                let engine_name = Text::new("What is the name of the search engine?").prompt();
+                                let engine_url_pattern = Text::new("What is the engine URL pattern?").prompt();
+                                let engine_pattern = Text::new("What pattern are you using?").prompt();
+                                let engine_regex = Text::new("What regex should be applied to the search term?").prompt();
+                                let engine_replacement = Text::new("What should the regex be replaced with?").prompt();
+
+                                let new_engine = Engine::new(
+                                    engine_name.unwrap().as_str(),
+                                    engine_url_pattern.unwrap().as_str(),
+                                    engine_pattern.unwrap().as_str(),
+                                    engine_regex.unwrap().as_str(),
+                                    engine_replacement.unwrap().as_str(),
+                                );
+
+                                config.push(new_engine);
+                            }
+                            else{
+                                if force || ! config.names().contains(&name.clone().unwrap()) {
+                                    config.push(Engine::new(
+                                        name.unwrap().as_str(),
+                                        url_pattern.unwrap().as_str(),
+                                        pattern.unwrap().as_str(),
+                                        regex.unwrap().as_str(),
+                                        replacement.unwrap().as_str(),
+                                    ));
+                                }
+                                else{
+                                    eprintln!("The config file already contains a search engine named {}", name.unwrap())
+                                }
+                            }
                         }
-                        Commands::Remove { name: engine_name } => {
-                            if let Ok(_) = config.remove_where_name(engine_name.as_str()) {
-                                info!("Successful removal of {} engine", engine_name);
-                            } else {
-                                error!("Failed to remove {} from the search engines list", engine_name);
+                        Commands::Remove { value, uuid} => {
+                            if uuid {
+                                if let Ok(uuid) = Uuid::from_str(value.as_str()){
+                                    if let Ok(_) = config.remove_where_uuid(uuid) {
+                                        info!("Successful removal of {} engine", value);
+                                    } else {
+                                        error!("Failed to remove {} from the search engines list", value);
+                                    }
+                                }
+                                else{
+                                    error!("Não foi possível converter {} para um uuid.", value);
+                                }
+                            }
+                            else{
+                                if let Ok(_) = config.remove_where_name(value.as_str()) {
+                                    info!("Successful removal of {} engine", value);
+                                } else {
+                                    error!("Failed to remove {} from the search engines list", value);
+                                }
                             }
                         }
                         Commands::List => {
@@ -431,18 +513,55 @@ fn main() {
                                 println!("- {}", name);
                             }
                         }
-                        Commands::SetDefault { name } => {
-                            if let Err(e) = config.set_default(name) {
-                                error!("Failed to update default engine: {}", e);
-                            } else {
-                                info!("Updated default engine definition");
+                        Commands::Default { name } => {
+
+                            if let Some(value) = name {
+                                if let Err(e) = config.set_default(value) {
+                                    error!("Failed to update default engine: {}", e);
+                                } else {
+                                    info!("Updated default engine definition");
+                                }
+                            }
+                            else{
+                                if let Some(default_engine) = config.default() {
+                                    println!("- {}", default_engine.name)
+                                } else {
+                                    eprintln!("No default engine defined!")
+                                }
                             }
                         }
-                        Commands::Default => {
-                            if let Some(default_engine) = config.default() {
-                                println!("- {}", default_engine.name)
-                            } else {
-                                eprintln!("No default engine defined!")
+                        Commands::Show { name, all } => {
+                            if let Some(ref engines) = config.engines{
+                                if all {
+                                    for element in engines {
+                                        if let Ok(element_as_string) = serde_yaml::to_string(&element){
+                                            println!("{}", element_as_string);
+                                        }
+                                        else{
+                                            error!("Error when trying to convert engine {} to yaml.", element.name);
+                                            eprintln!("Unable to convert engine to yaml")
+                                        }
+                                    }
+                                }
+                                else if let Some(value) = name{
+                                    if let Ok(engine) = config.where_name(value.clone()) {
+                                        if let Ok(element_as_string) = serde_yaml::to_string(&engine){
+                                            println!("{}", element_as_string);
+                                        }
+                                        else{
+                                            error!("Error when trying to convert engine {} to yaml.", engine.name);
+                                            eprintln!("Unable to convert engine to yaml")
+                                        }
+                                    }
+                                    else{
+                                        warn!("There is no engine defined named {}", value.clone());
+                                        eprintln!("There is no engine defined named {}", value);
+                                    }
+                                }
+                            }
+                            else{
+                                error!("Attempt to iterate over a null vector. There are no defined engines");
+                                eprintln!("There is no engines defined")
                             }
                         }
                     }
@@ -489,9 +608,7 @@ fn main() {
             }
             Err(_) => {
                 error!("There was an error loading file settings");
-                std::process::exit(1)
             }
         }
     }
-    std::process::exit(1)
 }
