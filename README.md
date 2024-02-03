@@ -56,6 +56,8 @@ If you have any problems, open an issue posting the last lines of **~/.search.lo
 
 ## Future changes
 
+- [ ] Add to PATH functionality;
+- [ ] Subcommand to edit configuration file;
 - [ ] Increased fault tolerance;
 - [ ] Keyboard shortcut autoconfiguration;
 - [ ] Verification of manual editing in the configuration file, creation of correction and validation suggestions;
