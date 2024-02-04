@@ -8,6 +8,7 @@ use std::str::FromStr;
 use clap::{Parser, Subcommand};
 use edit::edit_file;
 use home::home_dir;
+use inquire::Text;
 use log::{error, info, LevelFilter, warn};
 use log4rs;
 use log4rs::append::file::FileAppender;
@@ -116,6 +117,21 @@ impl Engine {
         }
     }
 
+    pub fn prompt_from_user() -> Engine {
+        let name = Text::new("What is the name of the search engine?").prompt();
+        let url_pattern = Text::new("What is the engine URL pattern?").prompt();
+        let pattern = Text::new("What pattern are you using?").prompt();
+        let regex = Text::new("What regex should be applied to the search term?").prompt();
+        let replacement = Text::new("What should the regex be replaced with?").prompt();
+
+        Engine::new(
+            name.unwrap().as_str(),
+            url_pattern.unwrap().as_str(),
+            pattern.unwrap().as_str(),
+            regex.unwrap().as_str(),
+            replacement.unwrap().as_str(),
+        )
+    }
 
     /// Generate the url based on the data already existing in the [Engine] object and based on the term passed
     /// as argument;
@@ -514,7 +530,7 @@ fn main() {
                                 config.push(engine);
                             } else {
                                 let name = name.unwrap();
-                                if force || !config.names().contains(&name.clone().unwrap()) {
+                                if force || !config.names().contains(&name.clone()) {
                                     config.push(Engine::new(
                                         name.as_str(),
                                         url_pattern.unwrap().as_str(),
@@ -564,7 +580,7 @@ fn main() {
                             }
                         }
                         Commands::Show { name, all } => {
-                            if let Some(engines) = config.engines {
+                            if let Some(engines) = config.engines.clone() {
                                 if all {
                                     for engine in engines {
                                         print_engine_as_yaml(engine);
@@ -597,7 +613,7 @@ fn main() {
                         error!("There is no defined default search engine.");
                         std::process::exit(1);
                     }), |engine_name| {
-                        config.where_name(engine_name).unwrap_or_else(|| {
+                        config.where_name(engine_name).unwrap_or_else(|_| {
                             error!("Engine not found. Using default search engine.");
                             config.default().expect("No search engine specified.")
                         })
