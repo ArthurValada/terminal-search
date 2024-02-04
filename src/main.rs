@@ -8,7 +8,6 @@ use std::str::FromStr;
 use clap::{Parser, Subcommand};
 use edit::edit_file;
 use home::home_dir;
-use inquire::Text;
 use log::{error, info, LevelFilter, warn};
 use log4rs;
 use log4rs::append::file::FileAppender;
@@ -49,6 +48,31 @@ fn open_browser(engine: &Engine, term: &str) {
             }
         }
         Err(_) => error!("Unable to generate URL"),
+    }
+}
+
+fn open_file(path: PathBuf, terminal: bool, snippet: &str){
+    if terminal{
+        match edit_file(path) {
+            Ok(_) => { info!("Success in opening the file and saving its contents") }
+            Err(e) => { error!("Failure!. Error: {}", e) }
+        }
+    }
+    else{
+        match open::that(path){
+            Ok(_) => info!("{} opened successfully", snippet),
+            Err(e) => error!("Error opening {}. Error: {}", snippet, e)
+        }
+    }
+}
+
+fn print_engine_as_yaml(engine: Engine){
+    if let Ok(element_as_string) = serde_yaml::to_string(&engine){
+        println!("{}", element_as_string);
+    }
+    else{
+        error!("Error when trying to convert engine {} to yaml.", engine.name);
+        eprintln!("Unable to convert engine to yaml")
     }
 }
 
@@ -379,7 +403,7 @@ impl Configuration {
 }
 
 
-/// Class responsible for intermediating the command line with the executable.
+/// Class responsible for intermediate the command line with the executable.
 /// [Parser], belonging to *Clap*, is used to generate the implementation for the command line.
 /// command macros are used to add information to the command line, according to their name.
 #[derive(Parser)]
@@ -484,57 +508,39 @@ fn main() {
             Ok(mut config) => {
                 if let Some(command) = cli.commands {
                     match command {
-                        Commands::Add { name, url_pattern, pattern, regex, replacement, force , interactive} => {
+                        Commands::Add { name, url_pattern, pattern, regex, replacement, force, interactive } => {
                             if interactive {
-                                let engine_name = Text::new("What is the name of the search engine?").prompt();
-                                let engine_url_pattern = Text::new("What is the engine URL pattern?").prompt();
-                                let engine_pattern = Text::new("What pattern are you using?").prompt();
-                                let engine_regex = Text::new("What regex should be applied to the search term?").prompt();
-                                let engine_replacement = Text::new("What should the regex be replaced with?").prompt();
-
-                                let new_engine = Engine::new(
-                                    engine_name.unwrap().as_str(),
-                                    engine_url_pattern.unwrap().as_str(),
-                                    engine_pattern.unwrap().as_str(),
-                                    engine_regex.unwrap().as_str(),
-                                    engine_replacement.unwrap().as_str(),
-                                );
-
-                                config.push(new_engine);
-                            }
-                            else{
-                                if force || ! config.names().contains(&name.clone().unwrap()) {
+                                let engine = Engine::prompt_from_user();
+                                config.push(engine);
+                            } else {
+                                let name = name.unwrap();
+                                if force || !config.names().contains(&name.clone().unwrap()) {
                                     config.push(Engine::new(
-                                        name.unwrap().as_str(),
+                                        name.as_str(),
                                         url_pattern.unwrap().as_str(),
                                         pattern.unwrap().as_str(),
                                         regex.unwrap().as_str(),
                                         replacement.unwrap().as_str(),
                                     ));
-                                }
-                                else{
-                                    eprintln!("The config file already contains a search engine named {}", name.unwrap())
+                                } else {
+                                    eprintln!("The config file already contains a search engine named {}", name);
                                 }
                             }
                         }
-                        Commands::Remove { value, uuid} => {
+                        Commands::Remove { value, uuid } => {
                             if uuid {
-                                if let Ok(uuid) = Uuid::from_str(value.as_str()){
-                                    if let Ok(_) = config.remove_where_uuid(uuid) {
-                                        info!("Successful removal of {} engine", value);
-                                    } else {
-                                        error!("Failed to remove {} from the search engines list", value);
+                                if let Ok(uuid) = Uuid::from_str(value.as_str()) {
+                                    match config.remove_where_uuid(uuid) {
+                                        Ok(_) => info!("Successful removal of {} engine", value),
+                                        Err(_) => error!("Failed to remove {} from the search engines list", value),
                                     }
-                                }
-                                else{
-                                    error!("Não foi possível converter {} para um uuid.", value);
-                                }
-                            }
-                            else{
-                                if let Ok(_) = config.remove_where_name(value.as_str()) {
-                                    info!("Successful removal of {} engine", value);
                                 } else {
-                                    error!("Failed to remove {} from the search engines list", value);
+                                    error!("Unable to convert {} to a uuid.", value);
+                                }
+                            } else {
+                                match config.remove_where_name(value.as_str()) {
+                                    Ok(_) => info!("Successful removal of {} engine", value),
+                                    Err(_) => error!("Failed to remove {} from the search engines list", value),
                                 }
                             }
                         }
@@ -544,15 +550,12 @@ fn main() {
                             }
                         }
                         Commands::Default { name } => {
-
                             if let Some(value) = name {
-                                if let Err(e) = config.set_default(value) {
-                                    error!("Failed to update default engine: {}", e);
-                                } else {
-                                    info!("Updated default engine definition");
+                                match config.set_default(value) {
+                                    Ok(_) => info!("Updated default engine definition"),
+                                    Err(e) => error!("Failed to update default engine: {}", e),
                                 }
-                            }
-                            else{
+                            } else {
                                 if let Some(default_engine) = config.default() {
                                     println!("- {}", default_engine.name)
                                 } else {
@@ -561,66 +564,26 @@ fn main() {
                             }
                         }
                         Commands::Show { name, all } => {
-                            if let Some(ref engines) = config.engines{
+                            if let Some(engines) = config.engines {
                                 if all {
-                                    for element in engines {
-                                        if let Ok(element_as_string) = serde_yaml::to_string(&element){
-                                            println!("{}", element_as_string);
-                                        }
-                                        else{
-                                            error!("Error when trying to convert engine {} to yaml.", element.name);
-                                            eprintln!("Unable to convert engine to yaml")
-                                        }
+                                    for engine in engines {
+                                        print_engine_as_yaml(engine);
+                                    }
+                                } else if let Some(value) = name {
+                                    match config.where_name(value.clone()) {
+                                        Ok(engine) => print_engine_as_yaml(engine),
+                                        Err(_) => warn!("There is no engine defined named {}", value),
                                     }
                                 }
-                                else if let Some(value) = name{
-                                    if let Ok(engine) = config.where_name(value.clone()) {
-                                        if let Ok(element_as_string) = serde_yaml::to_string(&engine){
-                                            println!("{}", element_as_string);
-                                        }
-                                        else{
-                                            error!("Error when trying to convert engine {} to yaml.", engine.name);
-                                            eprintln!("Unable to convert engine to yaml")
-                                        }
-                                    }
-                                    else{
-                                        warn!("There is no engine defined named {}", value.clone());
-                                        eprintln!("There is no engine defined named {}", value);
-                                    }
-                                }
-                            }
-                            else{
-                                error!("Attempt to iterate over a null vector. There are no defined engines");
-                                eprintln!("There is no engines defined")
+                            } else {
+                                error!("There are no defined engines");
                             }
                         }
                         Commands::Open { terminal } => {
-                            if terminal {
-                                match edit_file(search_config_path.clone()) {
-                                    Ok(_) => { info!("Success in opening the file and saving its contents") }
-                                    Err(e) => { error!("Falha!. Error: {}", e) }
-                                }
-                            }
-                            else{
-                                match open::that(search_config_path.clone()){
-                                    Ok(_) => info!("Configuration file opened successfully"),
-                                    Err(e) => error!("Error opening configuration file. Error: {}", e)
-                                }
-                            }
+                            open_file(search_config_path.clone(), terminal, "Configuration file");
                         }
-                        Commands::Log {terminal} => {
-                            if terminal {
-                                match edit_file(search_log_path.clone()){
-                                    Ok(_) => { info!("Success in opening the file and saving its contents") }
-                                    Err(e) => { error!("Falha!. Error: {}", e) }
-                                }
-                            }
-                            else{
-                                match open::that(search_log_path.clone()) {
-                                    Ok(_) => { info!("Sucesso ao abrir o arquivo ") }
-                                    Err(_) => {}
-                                }
-                            }
+                        Commands::Log { terminal } => {
+                            open_file(search_log_path.clone(), terminal, "Log file");
                         }
                     }
 
@@ -630,30 +593,23 @@ fn main() {
                         info!("The file has been saved successfully");
                     }
                 } else {
-                    let engine: Engine = if let Some(engine_name) = cli.engine {
-                        match config.where_name(engine_name) {
-                            Ok(engine) => {
-                                info!("Engine found");
-                                engine
-                            }
-                            Err(_) => config.default().unwrap_or_else(|| {
-                                error!("There is no defined default search engine.");
-                                std::process::exit(1);
-                            }),
-                        }
-                    } else {
-                        config.default().expect("No search engine specified.")
-                    };
+                    let engine = cli.engine.map_or_else(|| config.default().unwrap_or_else(|| {
+                        error!("There is no defined default search engine.");
+                        std::process::exit(1);
+                    }), |engine_name| {
+                        config.where_name(engine_name).unwrap_or_else(|| {
+                            error!("Engine not found. Using default search engine.");
+                            config.default().expect("No search engine specified.")
+                        })
+                    });
 
-
-                    if let Some(value) = cli.term {
-                        for query in value {
+                    if let Some(queries) = cli.term {
+                        for query in queries {
                             open_browser(&engine, query.as_str());
                         }
                     } else {
-                        open_browser(&engine, get_text().as_str())
-                    };
-
+                        open_browser(&engine, get_text().as_str());
+                    }
                 }
             }
             Err(_) => {
