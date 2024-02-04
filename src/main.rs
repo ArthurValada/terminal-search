@@ -461,16 +461,26 @@ enum Commands {
         #[arg(short, long, help = "Open the file in the system's default terminal editor")]
         terminal: bool
     },
+
+    #[clap(about = "Open the log file")]
+    Log {
+        #[arg(short, long, help = "Open the file in the system's default terminal editor")]
+        terminal: bool
+    },
 }
 
 fn main() {
 
     if let Some(home_path) = home_dir() {
-        log_init(home_path.join(".search.log"));
+
+        let search_config_path = home_path.join(".search_config.yaml");
+        let search_log_path = home_path.join(".search.log");
+
+        log_init(search_log_path.clone());
 
         let cli = Cli::parse();
 
-        match Configuration::from(home_path.join(".search_config.yaml")) {
+        match Configuration::from(search_config_path.clone()) {
             Ok(mut config) => {
                 if let Some(command) = cli.commands {
                     match command {
@@ -586,15 +596,29 @@ fn main() {
                         }
                         Commands::Open { terminal } => {
                             if terminal {
-                                match edit_file(home_path.join(".search_config.yaml")) {
+                                match edit_file(search_config_path.clone()) {
                                     Ok(_) => { info!("Success in opening the file and saving its contents") }
                                     Err(e) => { error!("Falha!. Error: {}", e) }
                                 }
                             }
                             else{
-                                match open::that(home_path.join(".search_config.yaml")){
+                                match open::that(search_config_path.clone()){
                                     Ok(_) => info!("Configuration file opened successfully"),
                                     Err(e) => error!("Error opening configuration file. Error: {}", e)
+                                }
+                            }
+                        }
+                        Commands::Log {terminal} => {
+                            if terminal {
+                                match edit_file(search_log_path.clone()){
+                                    Ok(_) => { info!("Success in opening the file and saving its contents") }
+                                    Err(e) => { error!("Falha!. Error: {}", e) }
+                                }
+                            }
+                            else{
+                                match open::that(search_log_path.clone()) {
+                                    Ok(_) => { info!("Sucesso ao abrir o arquivo ") }
+                                    Err(_) => {}
                                 }
                             }
                         }
