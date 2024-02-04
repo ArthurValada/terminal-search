@@ -17,6 +17,7 @@ home = "0.5.9"
 open = "5.0.1"
 uuid = { version = "1.7.0" , features = ["v4", "fast-rng", "macro-diagnostics", "serde"]}
 inquire = "0.6.2"
+edit = "0.1.5"
 
 [profile.release]
 opt-level = 3

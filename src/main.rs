@@ -1,4 +1,5 @@
 use std::{fs, io};
+use std::env::current_dir;
 use std::fs::File;
 use std::io::Write;
 use std::option::Option;
@@ -6,7 +7,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
+use edit::edit_file;
 use home::home_dir;
+use inquire::Text;
 use log::{error, info, LevelFilter, warn};
 use log4rs;
 use log4rs::append::file::FileAppender;
@@ -17,7 +20,6 @@ use regex::Regex;
 use selection::get_text;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use inquire::Text;
 
 fn log_init(file_path: PathBuf) {
     let logfile = FileAppender::builder()
@@ -37,6 +39,19 @@ fn log_init(file_path: PathBuf) {
     log4rs::init_config(config).unwrap();
 }
 
+
+fn open_browser(engine: &Engine, term: &str) {
+    match engine.url(term) {
+        Ok(url) => {
+            if let Ok(..) = open::that(url.clone()) {
+                info!("Browser opened successfully. Url: {}", url);
+            } else {
+                error!("Error opening browser.");
+            }
+        }
+        Err(_) => error!("Unable to generate URL"),
+    }
+}
 
 /// This class was created with the aim of representing a search engine.
 /// It makes use of the macros [Serialize], [Deserialize] and [Parser] so that it can be serialized and deserialized
@@ -441,6 +456,12 @@ enum Commands {
         #[arg(short, long, required_unless_present = "name")]
         all: bool,
     },
+
+    #[clap(about = "Open the file containing the settings")]
+    Open {
+        #[arg(short, long, help = "Open the file in the system's default terminal editor")]
+        terminal: bool
+    },
 }
 
 fn main() {
@@ -564,6 +585,20 @@ fn main() {
                                 eprintln!("There is no engines defined")
                             }
                         }
+                        Commands::Open { terminal } => {
+                            if terminal {
+                                match edit_file(home_path.join(".search_config.yaml")) {
+                                    Ok(_) => { info!("Success in opening the file and saving its contents") }
+                                    Err(e) => { error!("Falha!. Error: {}", e) }
+                                }
+                            }
+                            else{
+                                match open::that(home_path.join(".search_config.yaml")){
+                                    Ok(_) => info!("Configuration file opened successfully"),
+                                    Err(e) => error!("Error opening configuration file. Error: {}", e)
+                                }
+                            }
+                        }
                     }
 
                     if let Err(e) = config.save() {
@@ -590,28 +625,10 @@ fn main() {
 
                     if let Some(value) = cli.term {
                         for query in value {
-                            match engine.url(query.as_str()) {
-                                Ok(url) => {
-                                    if let Ok(..) = open::that(url.clone()) {
-                                        info!("Browser opened successfully. Url: {}", url);
-                                    } else {
-                                        error!("Error opening browser.");
-                                    }
-                                }
-                                Err(_) => error!("Unable to generate URL"),
-                            }
+                            open_browser(&engine, query.as_str());
                         }
                     } else {
-                        match engine.url(get_text().as_str()) {
-                            Ok(url) => {
-                                if let Ok(..) = open::that(url.clone()) {
-                                    info!("Browser opened successfully. Url: {}", url);
-                                } else {
-                                    error!("Error opening browser.");
-                                }
-                            }
-                            Err(_) => error!("Unable to generate URL"),
-                        }
+                        open_browser(&engine, get_text().as_str())
                     };
 
                 }
