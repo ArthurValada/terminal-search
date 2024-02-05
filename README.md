@@ -59,3 +59,5 @@ If you have any problems, open an issue posting the last lines of **~/.search.lo
 - [x] Subcommand to edit configuration file;
 - [ ] Increased fault tolerance;
 - [ ] Verification of manual editing in the configuration file, creation of correction and validation suggestions;
+- [ ] Modo anônimo;
+- [ ] Uso de journal;

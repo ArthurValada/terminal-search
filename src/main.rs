@@ -1,5 +1,5 @@
 use std::{fs, io};
-use std::fs::File;
+use std::fs::{create_dir, File, remove_file};
 use std::io::Write;
 use std::option::Option;
 use std::path::PathBuf;
@@ -180,6 +180,8 @@ struct Configuration {
     #[serde(skip_deserializing)]
     file_path: PathBuf,
 
+    log_enable: bool,
+
     /// Stores the name of the default search engine, null by default and subject to change, according to user preferences
     default_engine: Option<String>,
 
@@ -202,6 +204,7 @@ impl Configuration {
             file_path,
             default_engine,
             engines,
+            log_enable: true
         }
     }
 
@@ -323,7 +326,7 @@ impl Configuration {
 
 
     /// Removes a search engine based on its position on [self.engines]
-    pub fn remove_at(mut self, index: usize) -> Result<(), io::Error> {
+    pub fn remove_at(self, index: usize) -> Result<(), io::Error> {
         match self.engines {
             Some(mut content) => {
                 content.remove(index);
@@ -407,6 +410,14 @@ impl Configuration {
         }
     }
 
+    pub fn disable_log(&mut self){
+        self.log_enable = false;
+    }
+
+    pub fn enable_log(&mut self){
+        self.log_enable = true;
+    }
+
 
     /// Returns the search engine based on the name passed as an argument
     pub fn where_name(&self, name: String) -> Result<Engine, io::Error> {
@@ -429,13 +440,9 @@ impl Configuration {
 /// [Parser], belonging to *Clap*, is used to generate the implementation for the command line.
 /// command macros are used to add information to the command line, according to their name.
 #[derive(Parser)]
-#[command(author = "Arthur Valadares Campideli", version, about = "An application to open a search term from the command line", long_about = "This application was created with the aim of adding a shortcut to the keyboard in order to search the selected text")]
+#[command(author = "Arthur Valadares Campideli", version, about = "An application to open a search term from the command line", long_about = "This application was created with the aim of adding a shortcut to the keyboard in order to search the selected text", subcommand_negates_reqs = true)]
 #[command(propagate_version = true)]
 struct Cli {
-
-    /// The search term to be used, possibly null, in this case the selected text will be used
-    #[arg(num_args(0..), help = "Specify the term to be searched for")]
-    term: Option<Vec<String>>,
 
     /// Optional argument. If none is specified, the default will be used
     #[arg(long, short, help = "Specifies the search engine to be used")]
@@ -444,6 +451,10 @@ struct Cli {
     /// Commands that can be executed
     #[command(subcommand)]
     commands: Option<Commands>,
+
+    /// The search term to be used, possibly null, in this case the selected text will be used
+    #[arg(num_args(0..), help = "Specify the term to be searched for")]
+    term: Option<Vec<String>>,
 }
 
 
@@ -456,8 +467,11 @@ enum Commands {
     List,
 
     /// Defines and shows the default search engine configured
-    #[clap(about = "If no arguments are given, show the default search engine, if name is given, set the default search engine")]
-    Default {name: Option<String>,},
+    #[clap(about = "Show the default search engine")]
+    Default,
+
+    #[clap(about = "Set the default search engine")]
+    SetDefault {name: String},
 
     /// Adds a search engine based on the values requested by [Engine::new]
     #[clap(about = "Add a search engine")]
@@ -508,28 +522,106 @@ enum Commands {
         terminal: bool
     },
 
-    #[clap(about = "Open the log file")]
+    #[clap(about = "Open the log file, if enable")]
     Log {
         #[arg(short, long, help = "Open the file in the system's default terminal editor")]
-        terminal: bool
+        terminal: bool,
+
+        #[command(subcommand)]
+        command: Option<LogCommands>,
     },
+}
+
+#[derive(Subcommand)]
+#[derive(PartialEq)]
+enum LogCommands {
+    #[clap(about = "Enable the log file")]
+    Enable,
+
+    #[clap(about = "Disable the log file")]
+    Disable,
+
+    #[clap(about = "Delete the log file")]
+    Delete,
 }
 
 fn main() {
 
     if let Some(home_path) = home_dir() {
 
-        let search_config_path = home_path.join(".search_config.yaml");
-        let search_log_path = home_path.join(".search.log");
+        let search_dir = home_path.join(".search");
 
-        log_init(search_log_path.clone());
+        if ! search_dir.exists() {
+            if let Err(_) = create_dir(search_dir.clone()){
+                std::process::exit(1);
+            }
+        }
+
+        let search_config_path = search_dir.join("search_config.yaml");
 
         let cli = Cli::parse();
 
         match Configuration::from(search_config_path.clone()) {
             Ok(mut config) => {
+
+                let mut search_log_path: PathBuf = PathBuf::from("");
+
+                if config.log_enable {
+                    search_log_path = search_dir.join("search.log");
+                    log_init(search_log_path.clone());
+                }
+
                 if let Some(command) = cli.commands {
                     match command {
+                        Commands::Log { terminal, command} => {
+
+                            let file = search_dir.join("search.log");
+
+                            if let Some(value) = command {
+                                if value == LogCommands::Enable {
+                                    if !config.log_enable {
+                                        config.enable_log();
+                                        eprintln!("Log enabled.")
+                                    }
+                                    else{
+                                        eprintln!("Log already enable.")
+                                    }
+                                }
+                                else if value == LogCommands::Disable {
+                                    if config.log_enable {
+                                        config.disable_log();
+                                        eprintln!("Log disabled.")
+                                    }
+                                    else{
+                                        eprintln!("Log already disable.")
+                                    }
+                                }
+                                else {
+                                    if file.exists(){
+                                        match remove_file(file){
+                                            Ok(_) => { info!("{:?} successfully deleted!", search_log_path); println!("Log file deleted successfully") }
+                                            Err(_) => { error!("Unable to delete {:?}", search_log_path) }
+                                        }
+                                    }
+                                    else{
+                                        eprintln!("Log file already deleted.");
+                                    }
+                                }
+                            }
+                            else{
+                                if config.log_enable {
+                                    if file.exists() {
+                                        open_file(search_log_path.clone(), terminal, "Log file");
+                                    }
+                                    else {
+                                        eprintln!("The log file has been deleted!");
+                                    }
+                                }
+                                else{
+                                    eprintln!("Log disabled!")
+                                }
+                            }
+                        }
                         Commands::Add { name, url_pattern, pattern, regex, replacement, force, interactive } => {
                             if interactive {
                                 let engine = Engine::prompt_from_user();
@@ -571,18 +663,23 @@ fn main() {
                                 println!("- {}", name);
                             }
                         }
-                        Commands::Default { name } => {
-                            if let Some(value) = name {
-                                match config.set_default(value) {
-                                    Ok(_) => info!("Updated default engine definition"),
-                                    Err(e) => error!("Failed to update default engine: {}", e),
-                                }
+                        Commands::Default => {
+                            if let Some(default_engine) = config.default() {
+                                println!("- {}", default_engine.name)
                             } else {
-                                if let Some(default_engine) = config.default() {
-                                    println!("- {}", default_engine.name)
-                                } else {
-                                    eprintln!("No default engine defined!")
+                                eprintln!("No default engine defined!")
+                            }
+                        }
+                        Commands::SetDefault {name} => {
+
+                            if config.names().contains(&name){
+                                match config.set_default(name.clone()){
+                                    Ok(_) => { info!("Updated default search engine") }
+                                    Err(e) => { error!("Unable to update default search engine. Error: {}", e); eprintln!("Unable to update default search engine."); }
                                 }
+                            }
+                            else{
+                                eprintln!("Config file does not contains {} search engine.", name);
                             }
                         }
                         Commands::Show { name, all } => {
@@ -603,9 +700,6 @@ fn main() {
                         }
                         Commands::Open { terminal } => {
                             open_file(search_config_path.clone(), terminal, "Configuration file");
-                        }
-                        Commands::Log { terminal } => {
-                            open_file(search_log_path.clone(), terminal, "Log file");
                         }
                     }
 
