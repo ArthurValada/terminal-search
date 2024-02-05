@@ -1,5 +1,4 @@
 use std::{fs, io};
-use std::env::current_dir;
 use std::fs::{create_dir, File, remove_file};
 use std::io::Write;
 use std::option::Option;
