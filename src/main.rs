@@ -20,6 +20,8 @@ use selection::get_text;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Function responsible for redirecting [info!], [warn!] and [error!] to the file whose name is
+/// specified in the function call.
 fn log_init(file_path: PathBuf) {
     let logfile = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S)} | {l} | {m}{n}")))
@@ -38,7 +40,7 @@ fn log_init(file_path: PathBuf) {
     log4rs::init_config(config).unwrap();
 }
 
-
+/// Modularization of the function responsible for opening the generated url in the system's default browser.
 fn open_browser(engine: &Engine, term: &str) {
     match engine.url(term) {
         Ok(url) => {
@@ -52,6 +54,8 @@ fn open_browser(engine: &Engine, term: &str) {
     }
 }
 
+
+/// Modularization of the function responsible for opening the specified file in the text editor, terminal or system.
 fn open_file(path: PathBuf, terminal: bool, snippet: &str){
     if terminal{
         match edit_file(path) {
@@ -67,6 +71,8 @@ fn open_file(path: PathBuf, terminal: bool, snippet: &str){
     }
 }
 
+
+/// Modularization for printing the search engine in the terminal in yaml format.
 fn print_engine_as_yaml(engine: Engine){
     if let Ok(element_as_string) = serde_yaml::to_string(&engine){
         println!("{}", element_as_string);
