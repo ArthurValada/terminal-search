@@ -247,7 +247,7 @@ impl Configuration {
 
 
     /// Saves the object contents to a .yaml file
-    pub fn save(self) -> Result<(), io::Error> {
+    pub fn save(&self) -> Result<(), io::Error> {
         info!("Trying to save to file {:?}", self.file_path);
         match File::create(self.file_path.clone()) {
             Ok(mut file) => {
@@ -317,7 +317,7 @@ impl Configuration {
 
 
     /// Removes a search engine based on its position on [self.engines]
-    pub fn remove_at(self, index: usize) -> Result<(), io::Error> {
+    pub fn remove_at(mut self, index: usize) -> Result<(), io::Error> {
         match self.engines {
             Some(mut content) => {
                 content.remove(index);
@@ -341,8 +341,8 @@ impl Configuration {
 
 
     /// Generates a list of patterns configured for each search engine
-    pub fn patterns(self) -> Vec<String> {
-        match self.engines {
+    pub fn patterns(&self) -> Vec<String> {
+        match self.engines.clone() {
             Some(content) => content.iter().map(|element| element.pattern.clone()).collect(),
             None => vec![]
         }
@@ -350,8 +350,8 @@ impl Configuration {
 
 
     /// Generates a list of url patterns from all search engines
-    pub fn ulr_patterns(self) -> Vec<String> {
-        match self.engines {
+    pub fn ulr_patterns(&self) -> Vec<String> {
+        match self.engines.clone() {
             Some(content) => content.iter().map(|element| element.url_pattern.clone()).collect(),
             None => vec![],
         }
@@ -359,8 +359,8 @@ impl Configuration {
 
 
     /// Generates a list with the regex of each search engine
-    pub fn regexes(self) -> Vec<String> {
-        match self.engines {
+    pub fn regexes(&self) -> Vec<String> {
+        match self.engines.clone() {
             Some(content) => content.iter().map(|element| element.regex.clone()).collect(),
             None => vec![],
         }
@@ -368,8 +368,8 @@ impl Configuration {
 
 
     /// Generates a list of replacement for each search engine
-    pub fn replacements(self) -> Vec<String> {
-        match self.engines {
+    pub fn replacements(&self) -> Vec<String> {
+        match self.engines.clone() {
             Some(content) => content.iter().map(|element| element.replacement.clone()).collect(),
             None => vec![],
         }
