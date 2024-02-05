@@ -530,9 +530,7 @@ enum Commands {
 
         #[command(subcommand)]
         command: Option<LogCommands>,
-    },
-
-    UpdatePath,
+    }
 }
 
 #[derive(Subcommand)]
@@ -703,17 +701,6 @@ fn main() {
                         }
                         Commands::Open { terminal } => {
                             open_file(search_config_path.clone(), terminal, "Configuration file");
-                        }
-                        Commands::UpdatePath => {
-                            if let Ok(current_directory) = current_dir() {
-                                match env_perm::append("PATH", current_directory.to_str().unwrap()){
-                                    Ok(_) => { println!("PATH updated.") }
-                                    Err(_) => { eprintln!("Unable to update path") }
-                                }
-                            }
-                            else{
-                                eprintln!("Unable to get the current directory!");
-                            }
                         }
                     }
 
