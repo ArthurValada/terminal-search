@@ -1,5 +1,5 @@
 use std::{fs, io};
-use std::fs::{create_dir, File, remove_file};
+use std::fs::{create_dir, File};
 use std::io::Write;
 use std::option::Option;
 use std::path::PathBuf;
@@ -10,11 +10,6 @@ use edit::edit_file;
 use home::home_dir;
 use inquire::Text;
 use log::{error, info, LevelFilter, warn};
-use log4rs;
-use log4rs::append::file::FileAppender;
-use log4rs::Config;
-use log4rs::config::{Appender, Root};
-use log4rs::encode::pattern::PatternEncoder;
 use regex::Regex;
 use selection::get_text;
 use serde::{Deserialize, Serialize};
@@ -22,29 +17,18 @@ use uuid::Uuid;
 
 /// Function responsible for redirecting [info!], [warn!] and [error!] to the file whose name is
 /// specified in the function call.
-fn log_init(file_path: PathBuf) {
-    let logfile = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S)} | {l} | {m}{n}")))
-        .build(file_path)
-        .unwrap();
+fn log_init() {
+    use systemd_journal_logger::JournalLog;
 
-    let config = Config::builder()
-        .appender(Appender::builder().build("logfile", Box::new(logfile)))
-        .build(
-            Root::builder()
-                .appender("logfile")
-                .build(LevelFilter::Trace),
-        )
-        .unwrap();
-
-    log4rs::init_config(config).unwrap();
+    JournalLog::new().unwrap().install().unwrap();
+    log::set_max_level(LevelFilter::Info);
 }
 
 /// Modularization of the function responsible for opening the generated url in the system's default browser.
 fn open_browser(engine: &Engine, term: &str) {
     match engine.url(term) {
         Ok(url) => {
-            if let Ok(..) = open::that(url.clone()) {
+            if open::that(url.clone()).is_ok() {
                 info!("Browser opened successfully. Url: {}", url);
             } else {
                 error!("Error opening browser.");
@@ -56,15 +40,14 @@ fn open_browser(engine: &Engine, term: &str) {
 
 
 /// Modularization of the function responsible for opening the specified file in the text editor, terminal or system.
-fn open_file(path: PathBuf, terminal: bool, snippet: &str){
-    if terminal{
+fn open_file(path: PathBuf, terminal: bool, snippet: &str) {
+    if terminal {
         match edit_file(path) {
             Ok(_) => { info!("Success in opening the file and saving its contents") }
             Err(e) => { error!("Failure!. Error: {}", e) }
         }
-    }
-    else{
-        match open::that(path){
+    } else {
+        match open::that(path) {
             Ok(_) => info!("{} opened successfully", snippet),
             Err(e) => error!("Error opening {}. Error: {}", snippet, e)
         }
@@ -73,11 +56,10 @@ fn open_file(path: PathBuf, terminal: bool, snippet: &str){
 
 
 /// Modularization for printing the search engine in the terminal in yaml format.
-fn print_engine_as_yaml(engine: Engine){
-    if let Ok(element_as_string) = serde_yaml::to_string(&engine){
+fn print_engine_as_yaml(engine: Engine) {
+    if let Ok(element_as_string) = serde_yaml::to_string(&engine) {
         println!("{}", element_as_string);
-    }
-    else{
+    } else {
         error!("Error when trying to convert engine {} to yaml.", engine.name);
         eprintln!("Unable to convert engine to yaml")
     }
@@ -89,7 +71,6 @@ fn print_engine_as_yaml(engine: Engine){
 /// minimum settings for the system to function properly, regarding the search engine URL.
 #[derive(Serialize, Deserialize, Debug, Parser, Clone)]
 pub struct Engine {
-
     uuid: Uuid,
 
     /// Represent the name of the search engine
@@ -109,7 +90,6 @@ pub struct Engine {
 
 /// Implementation of the struct [Engine].
 impl Engine {
-
     /// Create a new engine according to the values passed as arguments;
     pub fn new(name: &str, url_pattern: &str, pattern: &str, regex: &str, replacement: &str) -> Engine {
         info!("Creating a new engine.");
@@ -123,6 +103,8 @@ impl Engine {
         }
     }
 
+
+    /// Create a new engine according to the values passed by user on interactive mode
     pub fn prompt_from_user() -> Engine {
         let name = Text::new("What is the name of the search engine?").prompt();
         let url_pattern = Text::new("What is the engine URL pattern?").prompt();
@@ -140,7 +122,7 @@ impl Engine {
     }
 
     /// Generate the url based on the data already existing in the [Engine] object and based on the term passed
-    /// as argument;
+    /// as argument
     pub fn url(&self, term: &str) -> Result<String, io::Error> {
         info!("Generating a URL.");
 
@@ -174,13 +156,10 @@ impl Engine {
 /// deserialized by serde \[feature=serde_yaml], in order to be written to and read from a .yaml file
 #[derive(Serialize, Deserialize, Debug)]
 struct Configuration {
-
     /// Stores the configuration file path;
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     file_path: PathBuf,
-
-    log_enable: bool,
 
     /// Stores the name of the default search engine, null by default and subject to change, according to user preferences
     default_engine: Option<String>,
@@ -194,9 +173,7 @@ struct Configuration {
 /// About the macro: In order to provide possibly useful features for what the project may become.
 /// Some functions, whose scope is very well-defined, are currently not applicable. To this end, in order
 /// to indicate to the compiler that there are no problems with the existence of _dead_ code, this directive is used
-#[warn(dead_code)]
 impl Configuration {
-
     /// Responsible for creating a new instance of a configuration object based on the values passed as arguments
     pub fn new(file_path: PathBuf, default_engine: Option<String>, engines: Option<Vec<Engine>>) -> Configuration {
         info!("Creating a new settings.");
@@ -204,7 +181,6 @@ impl Configuration {
             file_path,
             default_engine,
             engines,
-            log_enable: true
         }
     }
 
@@ -215,7 +191,7 @@ impl Configuration {
     pub fn from(file_path: PathBuf) -> Result<Configuration, io::Error> {
         info!("Load settings from {:?}", file_path);
 
-        return if !file_path.exists() {
+        if !file_path.exists() {
             info!("The configuration file does not exists");
             info!("Creating the configuration file...");
             match File::create(file_path.clone()) {
@@ -251,7 +227,7 @@ impl Configuration {
                     Err(error)
                 }
             }
-        };
+        }
     }
 
 
@@ -304,38 +280,24 @@ impl Configuration {
 
     /// Removes a search engine based on name
     pub fn remove_where_name(&mut self, name: &str) -> Result<(), io::Error> {
-        return if let Some(content) = &mut self.engines {
+        if let Some(content) = &mut self.engines {
             content.retain(|element| element.name != name);
             Ok(())
         } else {
             info!("Attempting to remove an element from a null vector");
             Err(io::Error::new(io::ErrorKind::InvalidData, "Attempting to remove an element from a null vector"))
-        };
+        }
     }
 
+
+    /// Allows an engine to be removed based on UUID
     pub fn remove_where_uuid(&mut self, uuid: Uuid) -> Result<(), io::Error> {
-        return if let Some(content) = &mut self.engines {
-          content.retain(|element| element.uuid != uuid);
+        if let Some(content) = &mut self.engines {
+            content.retain(|element| element.uuid != uuid);
             Ok(())
-        }
-        else{
+        } else {
             info!("Attempting to remove an element from a null vector");
             Err(io::Error::new(io::ErrorKind::InvalidData, "Attempting to remove an element from a null vector"))
-        };
-    }
-
-
-    /// Removes a search engine based on its position on [self.engines]
-    pub fn remove_at(self, index: usize) -> Result<(), io::Error> {
-        match self.engines {
-            Some(mut content) => {
-                content.remove(index);
-                Ok(())
-            }
-            None => {
-                info!("Attempting to remove an element from a null vector");
-                Err(io::Error::new(io::ErrorKind::InvalidData, "Attempting to remove an element from a null vector"))
-            }
         }
     }
 
@@ -349,51 +311,11 @@ impl Configuration {
     }
 
 
-    /// Generates a list of patterns configured for each search engine
-    pub fn patterns(&self) -> Vec<String> {
-        match self.engines.clone() {
-            Some(content) => content.iter().map(|element| element.pattern.clone()).collect(),
-            None => vec![]
-        }
-    }
-
-
-    /// Generates a list of url patterns from all search engines
-    pub fn ulr_patterns(&self) -> Vec<String> {
-        match self.engines.clone() {
-            Some(content) => content.iter().map(|element| element.url_pattern.clone()).collect(),
-            None => vec![],
-        }
-    }
-
-
-    /// Generates a list with the regex of each search engine
-    pub fn regexes(&self) -> Vec<String> {
-        match self.engines.clone() {
-            Some(content) => content.iter().map(|element| element.regex.clone()).collect(),
-            None => vec![],
-        }
-    }
-
-
-    /// Generates a list of replacement for each search engine
-    pub fn replacements(&self) -> Vec<String> {
-        match self.engines.clone() {
-            Some(content) => content.iter().map(|element| element.replacement.clone()).collect(),
-            None => vec![],
-        }
-    }
-
-
     /// Returns the default search engine
     pub fn default(&self) -> Option<Engine> {
         match &self.default_engine {
             Some(default) => {
-                if let Some(found_element) = self.engines.as_ref()?.iter().find(|&element| element.name == default.to_string()) {
-                    Some(found_element.clone())
-                } else {
-                    None
-                }
+                self.engines.as_ref()?.iter().find(|&element| element.name == *default).cloned()
             }
             None => None
         }
@@ -408,14 +330,6 @@ impl Configuration {
         } else {
             Err(io::Error::new(io::ErrorKind::InvalidData, "The search engine passed as an argument is not included in the settings"))
         }
-    }
-
-    pub fn disable_log(&mut self){
-        self.log_enable = false;
-    }
-
-    pub fn enable_log(&mut self){
-        self.log_enable = true;
     }
 
 
@@ -443,7 +357,6 @@ impl Configuration {
 #[command(author = "Arthur Valadares Campideli", version, about = "An application to open a search term from the command line", long_about = "This application was created with the aim of adding a shortcut to the keyboard in order to search the selected text", subcommand_negates_reqs = true)]
 #[command(propagate_version = true)]
 struct Cli {
-
     /// Optional argument. If none is specified, the default will be used
     #[arg(long, short, help = "Specifies the search engine to be used")]
     engine: Option<String>,
@@ -461,7 +374,6 @@ struct Cli {
 /// Enum containing the subcommands that can be executed from the Cli.
 #[derive(Subcommand)]
 enum Commands {
-
     /// Lists the configured search engines
     #[clap(about = "List configured search engines")]
     List,
@@ -471,7 +383,7 @@ enum Commands {
     Default,
 
     #[clap(about = "Set the default search engine")]
-    SetDefault {name: String},
+    SetDefault { name: String },
 
     /// Adds a search engine based on the values requested by [Engine::new]
     #[clap(about = "Add a search engine")]
@@ -491,7 +403,6 @@ enum Commands {
         #[arg(help = "Value by which the regex will be replaced")]
         replacement: Option<String>,
 
-
         #[arg(short, long, help = "Force the addition of a new search engine with a repeated name")]
         force: bool,
 
@@ -505,7 +416,7 @@ enum Commands {
         value: String,
 
         #[arg(short, long)]
-        uuid: bool
+        uuid: bool,
     },
 
     #[clap(about = "Shows a specific search engine or all")]
@@ -521,40 +432,35 @@ enum Commands {
         #[arg(short, long, help = "Open the file in the system's default terminal editor")]
         terminal: bool
     },
-
-    #[clap(about = "Open the log file, if enable")]
-    Log {
-        #[arg(short, long, help = "Open the file in the system's default terminal editor")]
-        terminal: bool,
-
-        #[command(subcommand)]
-        command: Option<LogCommands>,
-    }
 }
 
+
+/// Enum that contains the set of subcommands that can be executed from the command [Commands::Log]
 #[derive(Subcommand)]
 #[derive(PartialEq)]
 enum LogCommands {
+    /// Enables log messages
     #[clap(about = "Enable the log file")]
     Enable,
 
+    /// Disables log messages
     #[clap(about = "Disable the log file")]
     Disable,
 
+    /// Deletes log files
     #[clap(about = "Delete the log file")]
     Delete,
 }
 
 fn main() {
 
-    if let Some(home_path) = home_dir() {
+    log_init();
 
+    if let Some(home_path) = home_dir() {
         let search_dir = home_path.join(".search");
 
-        if ! search_dir.exists() {
-            if let Err(_) = create_dir(search_dir.clone()){
-                std::process::exit(1);
-            }
+        if !search_dir.exists() && create_dir(search_dir.clone()).is_err() {
+            std::process::exit(1);
         }
 
         let search_config_path = search_dir.join("search_config.yaml");
@@ -564,64 +470,8 @@ fn main() {
         match Configuration::from(search_config_path.clone()) {
             Ok(mut config) => {
 
-                let mut search_log_path: PathBuf = PathBuf::from("");
-
-                if config.log_enable {
-                    search_log_path = search_dir.join("search.log");
-                    log_init(search_log_path.clone());
-                }
-
                 if let Some(command) = cli.commands {
                     match command {
-                        Commands::Log { terminal, command} => {
-
-                            let file = search_dir.join("search.log");
-
-                            if let Some(value) = command {
-                                if value == LogCommands::Enable {
-                                    if !config.log_enable {
-                                        config.enable_log();
-                                        eprintln!("Log enabled.")
-                                    }
-                                    else{
-                                        eprintln!("Log already enable.")
-                                    }
-                                }
-                                else if value == LogCommands::Disable {
-                                    if config.log_enable {
-                                        config.disable_log();
-                                        eprintln!("Log disabled.")
-                                    }
-                                    else{
-                                        eprintln!("Log already disable.")
-                                    }
-                                }
-                                else {
-                                    if file.exists(){
-                                        match remove_file(file){
-                                            Ok(_) => { info!("{:?} successfully deleted!", search_log_path); println!("Log file deleted successfully") }
-                                            Err(_) => { error!("Unable to delete {:?}", search_log_path) }
-                                        }
-                                    }
-                                    else{
-                                        eprintln!("Log file already deleted.");
-                                    }
-                                }
-                            }
-                            else{
-                                if config.log_enable {
-                                    if file.exists() {
-                                        open_file(search_log_path.clone(), terminal, "Log file");
-                                    }
-                                    else {
-                                        eprintln!("The log file has been deleted!");
-                                    }
-                                }
-                                else{
-                                    eprintln!("Log disabled!")
-                                }
-                            }
-                        }
                         Commands::Add { name, url_pattern, pattern, regex, replacement, force, interactive } => {
                             if interactive {
                                 let engine = Engine::prompt_from_user();
@@ -670,15 +520,16 @@ fn main() {
                                 eprintln!("No default engine defined!")
                             }
                         }
-                        Commands::SetDefault {name} => {
-
-                            if config.names().contains(&name){
-                                match config.set_default(name.clone()){
+                        Commands::SetDefault { name } => {
+                            if config.names().contains(&name) {
+                                match config.set_default(name.clone()) {
                                     Ok(_) => { info!("Updated default search engine") }
-                                    Err(e) => { error!("Unable to update default search engine. Error: {}", e); eprintln!("Unable to update default search engine."); }
+                                    Err(e) => {
+                                        error!("Unable to update default search engine. Error: {}", e);
+                                        eprintln!("Unable to update default search engine.");
+                                    }
                                 }
-                            }
-                            else{
+                            } else {
                                 eprintln!("Config file does not contains {} search engine.", name);
                             }
                         }

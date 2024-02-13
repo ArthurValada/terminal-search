@@ -9,6 +9,8 @@ In order to extinguish the monotonous process of copying the term, open the brow
 in your favorite search engine, it would be very convenient to simply select
 and activate a key combination. With this in mind, this project was created.
 
+~~Is it a silly thing? Probably, but this was created just for me to expand my Rust skills~~
+
 ## Summary
 
 - Configuration;
@@ -33,7 +35,7 @@ run it by the following command:
 
 #### Commands
 - The **list** command will list the search engines configured in the **.search_config.yaml** file located on your
-home directory.
+home directory under folder **.search**.
 - **default** will show the default search engine defined in the **~/.search_config.yaml** file;
 - **set-default** will set the default search engine based on the name passed as an argument;
 - **add** will add a new search engine based on the values passed as an argument, they are:
@@ -42,7 +44,17 @@ home directory.
   - **PATTERN**, the pattern that should be replaced in **URL_PATTERN**;
   - **REGEX**, the regex that will be applied to the string before the replacement is made;
   - **REPLACEMENT**, the value by which the regex will be replaced in the search term;
-- **remove**, removes a search engine based on name;
+
+  ```bash
+  search add google https://www.google.com/search?q={{term}} {{term}} \\s+ +
+  ```  
+  
+This will add the Google search engine with the url pattern `https://www.google.com/search?q={{term}}` and when you
+call the executable to use this search engine, it will replace `{{term}}` with the search term applying the
+regex `\s+` and replacing the matches with `+`, that is, 'sla something' becomes 'sla+something' before
+to be replaced in the url pattern. 
+
+- **remove**, removes a search engine based on name or in your uuid, if the `--uuid` flag is passed;
 
 #### Argument
 - **TERM** the search term;
@@ -57,7 +69,7 @@ If you have any problems, open an issue posting the last lines of **~/.search.lo
 ## Future changes
 
 - [x] Subcommand to edit configuration file;
+- [x] Using journal;
 - [ ] Increased fault tolerance;
 - [ ] Verification of manual editing in the configuration file, creation of correction and validation suggestions;
-- [ ] Modo anônimo;
-- [ ] Uso de journal;
+- [ ] Incognito mode;
